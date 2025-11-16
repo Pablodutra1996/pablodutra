@@ -8,8 +8,8 @@ Aqui apresento soluções de análise de dados, BI e automação que desenvolvi 
 
 ## 🚀 Habilidades
 
-- **Linguagens:** Python, SQL, DAX  
-- **Ferramentas:** Power BI, Excel, Google BigQuery, GitHub  
+- **Linguagens:** SQL, DAX  
+- **Ferramentas:** Power BI, Excel, Google BigQuery, GitHub, Excel, SQL
 - **Técnicas:** ETL, Dashboards, KPIs, Data Storytelling, Modelagem de Dados  
 
 ---
