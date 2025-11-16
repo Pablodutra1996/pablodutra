@@ -1,5 +1,5 @@
 # 👋 Olá! Eu sou Pablo Dutra  
-### Analista de Dados | BI | MIS | FP&A
+### Analista de Dados | BI 
 
 Bem-vindo ao meu portfólio de projetos!  
 Aqui apresento soluções de análise de dados, BI e automação que desenvolvi para apoiar decisões estratégicas.
