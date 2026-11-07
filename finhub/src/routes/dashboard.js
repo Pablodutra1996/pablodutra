@@ -9,16 +9,16 @@ import { backupDatabase } from '../jobs.js';
 
 const r = Router();
 
-r.get('/', (req, res) => {
+r.get('/', async (req, res) => {
   const month = String(req.query.month || currentMonth());
   const userId = req.query.user_id ? Number(req.query.user_id) : null;
-  if (userId && !q.get('SELECT id FROM users WHERE id=?', userId)) fail(404, 'Usuário não encontrado.');
-  res.json(computeKpis(month, userId));
+  if (userId && !await q.get('SELECT id FROM users WHERE id=?', userId)) fail(404, 'Usuário não encontrado.');
+  res.json(await computeKpis(month, userId));
 });
 
-r.get('/reports', (req, res) => {
+r.get('/reports', async (req, res) => {
   res.json({
-    reports: q.all(`SELECT r.id, r.period, r.user_id, r.sent_at, u.name user_name FROM kpi_reports r LEFT JOIN users u ON u.id=r.user_id
+    reports: await q.all(`SELECT r.id, r.period, r.user_id, r.sent_at, u.name user_name FROM kpi_reports r LEFT JOIN users u ON u.id=r.user_id
       ORDER BY r.id DESC LIMIT 50`),
   });
 });
@@ -37,10 +37,10 @@ r.post('/backup', requireAdmin, async (req, res) => {
   res.json({ key: await backupDatabase() });
 });
 
-r.get('/system', requireAdmin, (req, res) => {
+r.get('/system', requireAdmin, async (req, res) => {
   res.json({
     mail: mailStatus(),
-    emails: q.all('SELECT * FROM email_log ORDER BY id DESC LIMIT 30'),
+    emails: await q.all('SELECT * FROM email_log ORDER BY id DESC LIMIT 30'),
   });
 });
 

@@ -18,7 +18,7 @@ export async function saveFile(file, { prefix, userId }) {
   const key = `${prefix}/${crypto.randomUUID()}-${safeFilename(original)}`;
   const storage = await getStorage();
   await storage.put(key, file.buffer, file.mimetype);
-  const info = q.run(
+  const info = await q.run(
     'INSERT INTO files (storage_key, filename, mime, size, uploaded_by, created_at) VALUES (?,?,?,?,?,?)',
     key, original, file.mimetype, file.size, userId, now()
   );
@@ -28,10 +28,10 @@ export async function saveFile(file, { prefix, userId }) {
 /** Notificação in-app (+ e-mail opcional) */
 export async function notify(userId, { title, body = '', link = '', email = false, emailHtml }) {
   if (!userId) return;
-  const info = q.run('INSERT INTO notifications (user_id, title, body, link, created_at) VALUES (?,?,?,?,?)', userId, title, body, link, now());
+  const info = await q.run('INSERT INTO notifications (user_id, title, body, link, created_at) VALUES (?,?,?,?,?)', userId, title, body, link, now());
   emitToUser(userId, 'notification', { id: Number(info.lastInsertRowid), title, body, link, created_at: now() });
   if (email) {
-    const user = q.get('SELECT email, notify_email, status FROM users WHERE id=?', userId);
+    const user = await q.get('SELECT email, notify_email, status FROM users WHERE id=?', userId);
     if (user && user.status === 'active' && user.notify_email) {
       await sendMail({
         to: user.email,

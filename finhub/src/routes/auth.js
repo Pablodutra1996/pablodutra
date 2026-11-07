@@ -13,13 +13,13 @@ function validatePassword(pw) {
   if (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)) fail(400, 'A senha deve conter letras e números.');
 }
 
-r.get('/setup-status', (req, res) => {
-  res.json({ needsSetup: q.get('SELECT COUNT(*) c FROM users').c === 0 });
+r.get('/setup-status', async (req, res) => {
+  res.json({ needsSetup: (await q.get('SELECT COUNT(*) c FROM users')).c === 0 });
 });
 
 // Primeiro acesso: cria o administrador e um quadro inicial
-r.post('/setup', (req, res) => {
-  if (q.get('SELECT COUNT(*) c FROM users').c > 0) fail(400, 'A plataforma já foi configurada.');
+r.post('/setup', async (req, res) => {
+  if ((await q.get('SELECT COUNT(*) c FROM users')).c > 0) fail(400, 'A plataforma já foi configurada.');
   const { name, email, password } = req.body || {};
   if (!name?.trim()) fail(400, 'Informe seu nome.');
   if (!isEmail(email)) fail(400, 'E-mail inválido.');
@@ -27,22 +27,22 @@ r.post('/setup', (req, res) => {
     fail(403, 'Somente o e-mail definido como administrador (ADMIN_EMAIL) pode fazer a configuração inicial.');
   }
   validatePassword(password);
-  const user = tx(() => {
-    const info = q.run(
+  const user = await tx(async () => {
+    const info = await q.run(
       `INSERT INTO users (name, email, password_hash, role, color, created_at) VALUES (?,?,?,?,?,?)`,
       name.trim(), email.trim().toLowerCase(), bcrypt.hashSync(password, 10), 'admin', pickColor(email), now()
     );
-    q.run(`INSERT INTO boards (name, description, color, created_by, created_at) VALUES (?,?,?,?,?)`,
+    await q.run(`INSERT INTO boards (name, description, color, created_by, created_at) VALUES (?,?,?,?,?)`,
       'Rotinas Financeiras', 'Quadro principal da área financeira', '#4f46e5', info.lastInsertRowid, now());
-    return q.get('SELECT * FROM users WHERE id=?', info.lastInsertRowid);
+    return await q.get('SELECT * FROM users WHERE id=?', info.lastInsertRowid);
   });
   setSession(res, user);
   res.json({ user: publicUser(user) });
 });
 
-r.post('/login', loginRateLimit, (req, res) => {
+r.post('/login', loginRateLimit, async (req, res) => {
   const { email, password } = req.body || {};
-  const user = q.get('SELECT * FROM users WHERE email=?', String(email || '').trim());
+  const user = await q.get('SELECT * FROM users WHERE LOWER(email)=LOWER(?)', String(email || '').trim());
   if (!user || !user.password_hash || !bcrypt.compareSync(String(password || ''), user.password_hash)) {
     req.loginAttempt.fail();
     fail(401, 'E-mail ou senha incorretos.');
@@ -53,38 +53,38 @@ r.post('/login', loginRateLimit, (req, res) => {
   res.json({ user: publicUser(user) });
 });
 
-r.post('/logout', (req, res) => {
+r.post('/logout', async (req, res) => {
   clearSession(res);
   res.json({ ok: true });
 });
 
-r.get('/me', requireAuth, (req, res) => {
+r.get('/me', requireAuth, async (req, res) => {
   res.json({ user: publicUser(req.user), iceServers: config.webrtc.iceServers });
 });
 
 // ---------- Convites ----------
-r.get('/invite/:token', (req, res) => {
-  const inv = q.get('SELECT * FROM invites WHERE token=?', req.params.token);
+r.get('/invite/:token', async (req, res) => {
+  const inv = await q.get('SELECT * FROM invites WHERE token=?', req.params.token);
   if (!inv || inv.accepted_at) fail(404, 'Convite inválido ou já utilizado.');
   if (inv.expires_at < now()) fail(410, 'Convite expirado. Peça um novo convite ao administrador.');
   res.json({ email: inv.email });
 });
 
-r.post('/accept-invite', (req, res) => {
+r.post('/accept-invite', async (req, res) => {
   const { token, name, password } = req.body || {};
-  const inv = q.get('SELECT * FROM invites WHERE token=?', String(token || ''));
+  const inv = await q.get('SELECT * FROM invites WHERE token=?', String(token || ''));
   if (!inv || inv.accepted_at) fail(404, 'Convite inválido ou já utilizado.');
   if (inv.expires_at < now()) fail(410, 'Convite expirado.');
   if (!name?.trim()) fail(400, 'Informe seu nome.');
   validatePassword(password);
-  if (q.get('SELECT id FROM users WHERE email=?', inv.email)) fail(409, 'Já existe uma conta com este e-mail.');
-  const user = tx(() => {
-    const info = q.run(
+  if (await q.get('SELECT id FROM users WHERE LOWER(email)=LOWER(?)', inv.email)) fail(409, 'Já existe uma conta com este e-mail.');
+  const user = await tx(async () => {
+    const info = await q.run(
       `INSERT INTO users (name, email, password_hash, role, color, created_at) VALUES (?,?,?,?,?,?)`,
       name.trim(), inv.email.toLowerCase(), bcrypt.hashSync(password, 10), inv.role, pickColor(inv.email), now()
     );
-    q.run('UPDATE invites SET accepted_at=? WHERE id=?', now(), inv.id);
-    return q.get('SELECT * FROM users WHERE id=?', info.lastInsertRowid);
+    await q.run('UPDATE invites SET accepted_at=? WHERE id=?', now(), inv.id);
+    return await q.get('SELECT * FROM users WHERE id=?', info.lastInsertRowid);
   });
   setSession(res, user);
   res.json({ user: publicUser(user) });
@@ -92,10 +92,10 @@ r.post('/accept-invite', (req, res) => {
 
 // ---------- Recuperação de senha ----------
 r.post('/forgot', async (req, res) => {
-  const user = q.get(`SELECT * FROM users WHERE email=? AND status='active'`, String(req.body?.email || '').trim());
+  const user = await q.get(`SELECT * FROM users WHERE LOWER(email)=LOWER(?) AND status='active'`, String(req.body?.email || '').trim());
   if (user) {
     const token = randomToken();
-    q.run('INSERT INTO password_resets (user_id, token, expires_at, created_at) VALUES (?,?,?,?)',
+    await q.run('INSERT INTO password_resets (user_id, token, expires_at, created_at) VALUES (?,?,?,?)',
       user.id, token, new Date(Date.now() + 2 * 3600000).toISOString(), now());
     await sendMail({
       to: user.email,
@@ -111,21 +111,21 @@ r.post('/forgot', async (req, res) => {
   res.json({ ok: true });
 });
 
-r.post('/reset', (req, res) => {
+r.post('/reset', async (req, res) => {
   const { token, password } = req.body || {};
-  const pr = q.get('SELECT * FROM password_resets WHERE token=?', String(token || ''));
+  const pr = await q.get('SELECT * FROM password_resets WHERE token=?', String(token || ''));
   if (!pr || pr.used_at || pr.expires_at < now()) fail(400, 'Link inválido ou expirado.');
   validatePassword(password);
-  q.run('UPDATE users SET password_hash=? WHERE id=?', bcrypt.hashSync(password, 10), pr.user_id);
-  q.run('UPDATE password_resets SET used_at=? WHERE id=?', now(), pr.id);
+  await q.run('UPDATE users SET password_hash=? WHERE id=?', bcrypt.hashSync(password, 10), pr.user_id);
+  await q.run('UPDATE password_resets SET used_at=? WHERE id=?', now(), pr.id);
   res.json({ ok: true });
 });
 
-r.post('/change-password', requireAuth, (req, res) => {
+r.post('/change-password', requireAuth, async (req, res) => {
   const { current, password } = req.body || {};
   if (!bcrypt.compareSync(String(current || ''), req.user.password_hash)) fail(400, 'Senha atual incorreta.');
   validatePassword(password);
-  q.run('UPDATE users SET password_hash=? WHERE id=?', bcrypt.hashSync(password, 10), req.user.id);
+  await q.run('UPDATE users SET password_hash=? WHERE id=?', bcrypt.hashSync(password, 10), req.user.id);
   res.json({ ok: true });
 });
 

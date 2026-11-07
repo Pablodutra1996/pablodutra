@@ -21,7 +21,7 @@ export async function renderTeam(container) {
         </div>
         <div class="card card-pad">
           <h3>${icon('shield', 18)} Sistema</h3>
-          <div class="small" style="line-height:1.8">E-mail: ${sys.mail.smtpConfigured ? '<span class="tag ok">SMTP configurado</span>'
+          <div class="small" style="line-height:1.8">E-mail: ${sys.mail.smtpConfigured ? `<span class="tag ok">${esc(sys.mail.provider)} configurado</span>`
             : `<span class="tag soon">Modo teste</span><br><span class="muted">SMTP não configurado: e-mails são gravados em <code>${esc(sys.mail.outbox)}</code>.</span>`}</div>
           <div class="row wrap" style="margin-top:12px">
             <button class="btn sm" id="run-reminders">${icon('bell', 14)} Disparar lembretes agora</button>

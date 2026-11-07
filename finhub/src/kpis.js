@@ -23,12 +23,12 @@ const pct = (num, den) => (den ? Math.round((num / den) * 1000) / 10 : null);
 const round1 = (x) => (x === null ? null : Math.round(x * 10) / 10);
 const inRange = (iso, s, e) => iso && iso >= s && iso < e;
 
-function loadData(userId) {
+async function loadData(userId) {
   const tasks = userId
-    ? q.all(`SELECT t.*, u.name assignee_name FROM tasks t LEFT JOIN users u ON u.id=t.assignee_id WHERE t.assignee_id=?`, userId)
-    : q.all(`SELECT t.*, u.name assignee_name FROM tasks t LEFT JOIN users u ON u.id=t.assignee_id`);
+    ? await q.all(`SELECT t.*, u.name assignee_name FROM tasks t LEFT JOIN users u ON u.id=t.assignee_id WHERE t.assignee_id=?`, userId)
+    : await q.all(`SELECT t.*, u.name assignee_name FROM tasks t LEFT JOIN users u ON u.id=t.assignee_id`);
   const ids = new Set(tasks.map((t) => t.id));
-  const history = q.all('SELECT * FROM task_history ORDER BY task_id, created_at, id').filter((h) => ids.has(h.task_id));
+  const history = (await q.all('SELECT * FROM task_history ORDER BY task_id, created_at, id')).filter((h) => ids.has(h.task_id));
   const byTask = new Map();
   for (const h of history) {
     if (!byTask.has(h.task_id)) byTask.set(h.task_id, []);
@@ -98,9 +98,9 @@ function core(tasks, byTask, history, start, end) {
   };
 }
 
-export function computeKpis(month, userId = null) {
+export async function computeKpis(month, userId = null) {
   const { start, end } = monthRange(month);
-  const { tasks, history, byTask } = loadData(userId);
+  const { tasks, history, byTask } = await loadData(userId);
   const base = core(tasks, byTask, history, start, end);
   const { completed, overdueOpen } = base._lists;
   delete base._lists;
@@ -129,7 +129,7 @@ export function computeKpis(month, userId = null) {
 
   let byAssignee = [];
   if (!userId) {
-    const users = q.all(`SELECT id, name, color FROM users WHERE status='active' ORDER BY name`);
+    const users = await q.all(`SELECT id, name, color, avatar_file_id FROM users WHERE status='active' ORDER BY name`);
     byAssignee = users.map((u) => {
       const k = core(tasks.filter((t) => t.assignee_id === u.id), byTask, history, start, end);
       return { user_id: u.id, name: u.name, color: u.color, completed: k.completed, completion_rate: k.completion_rate,

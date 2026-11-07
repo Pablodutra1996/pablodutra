@@ -5,7 +5,7 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import multer from 'multer';
 import { config } from './config.js';
-import './db.js';
+import { initDb, q } from './db.js';
 import { requireAuth } from './auth.js';
 import { initRealtime } from './realtime.js';
 import { startJobs } from './jobs.js';
@@ -34,7 +34,15 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/api/health', (req, res) => res.json({ ok: true }));
+// Verificação de saúde (usada por Render/UptimeRobot). Consulta o banco: mantém o Supabase ativo.
+app.get('/api/health', async (req, res) => {
+  try {
+    await q.get('SELECT 1 AS ok');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(503).json({ ok: false, error: 'banco indisponível' });
+  }
+});
 app.use('/api/auth', authRoutes);
 app.use('/api/integrations', callbackRouter);
 app.use('/api/users', requireAuth, userRoutes);
@@ -62,8 +70,9 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: status >= 500 && config.isProd ? 'Erro interno' : err.message });
 });
 
+await initDb();
 const server = http.createServer(app);
 initRealtime(server);
 await getStorage();
-startJobs();
+await startJobs();
 server.listen(config.port, () => console.log(`FinHub rodando em ${config.appUrl} (porta ${config.port})`));

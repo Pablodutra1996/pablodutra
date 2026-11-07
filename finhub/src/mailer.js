@@ -5,7 +5,8 @@ import { config } from './config.js';
 import { q, now } from './db.js';
 import { escapeHtml } from './util.js';
 
-const smtpConfigured = !!config.smtp.host;
+const brevoConfigured = !!config.brevo.apiKey;
+const smtpConfigured = !brevoConfigured && !!config.smtp.host;
 const transport = smtpConfigured
   ? nodemailer.createTransport({
       host: config.smtp.host,
@@ -16,24 +17,42 @@ const transport = smtpConfigured
   : null;
 
 const outbox = path.join(config.dataDir, 'outbox');
-if (!smtpConfigured) {
+if (brevoConfigured) console.log('[mail] envio via API Brevo');
+else if (!smtpConfigured) {
   fs.mkdirSync(outbox, { recursive: true });
-  console.warn(`[mail] SMTP não configurado — e-mails serão gravados em ${outbox}`);
+  console.warn(`[mail] E-mail não configurado — mensagens serão gravadas em ${outbox}`);
+}
+
+/** "Nome <email@x.com>" -> { name, email } */
+function parseFrom(from) {
+  const m = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(from);
+  return m ? { name: m[1] || 'FinHub', email: m[2].trim() } : { name: 'FinHub', email: from.trim() };
+}
+
+async function sendViaBrevo({ to, subject, html }) {
+  const res = await fetch(config.brevo.url, {
+    method: 'POST',
+    headers: { 'api-key': config.brevo.apiKey, 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ sender: parseFrom(config.smtp.from), to: [{ email: to }], subject, htmlContent: html }),
+  });
+  if (!res.ok) throw new Error(`Brevo ${res.status}: ${(await res.text()).slice(0, 200)}`);
 }
 
 export async function sendMail({ to, subject, html }) {
   try {
-    if (transport) {
+    if (brevoConfigured) {
+      await sendViaBrevo({ to, subject, html });
+    } else if (transport) {
       await transport.sendMail({ from: config.smtp.from, to, subject, html });
     } else {
       const file = path.join(outbox, `${Date.now()}-${String(to).replace(/[^\w.@-]/g, '_')}.html`);
       fs.writeFileSync(file, `<!-- Para: ${to} | Assunto: ${subject} -->\n${html}`);
     }
-    q.run('INSERT INTO email_log (recipient, subject, status, created_at) VALUES (?,?,?,?)', to, subject, transport ? 'sent' : 'outbox', now());
+    await q.run('INSERT INTO email_log (recipient, subject, status, created_at) VALUES (?,?,?,?)', to, subject, brevoConfigured || transport ? 'sent' : 'outbox', now());
     return true;
   } catch (err) {
     console.error('[mail] falha ao enviar:', err.message);
-    q.run('INSERT INTO email_log (recipient, subject, status, error, created_at) VALUES (?,?,?,?,?)', to, subject, 'error', err.message, now());
+    await q.run('INSERT INTO email_log (recipient, subject, status, error, created_at) VALUES (?,?,?,?,?)', to, subject, 'error', err.message, now());
     return false;
   }
 }
@@ -54,4 +73,4 @@ ${cta ? `<p style="margin:24px 0 0"><a href="${cta.url}" style="background:#4f46
 </table></td></tr></table></body></html>`;
 }
 
-export const mailStatus = () => ({ smtpConfigured, outbox: smtpConfigured ? null : outbox });
+export const mailStatus = () => ({ smtpConfigured: smtpConfigured || brevoConfigured, provider: brevoConfigured ? 'Brevo (API)' : smtpConfigured ? 'SMTP' : null, outbox: smtpConfigured || brevoConfigured ? null : outbox });

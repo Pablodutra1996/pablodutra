@@ -36,6 +36,11 @@ export const config = {
     pass: env.SMTP_PASS || '',
     from: env.MAIL_FROM || 'FinHub <no-reply@finhub.local>',
   },
+  // Envio por API HTTP (não depende de portas SMTP — útil em hospedagens gratuitas que bloqueiam SMTP)
+  brevo: {
+    apiKey: env.BREVO_API_KEY || '',
+    url: env.BREVO_API_URL || 'https://api.brevo.com/v3/smtp/email',
+  },
 
   storage: {
     driver: (env.STORAGE_DRIVER || 'local').toLowerCase(), // local | s3 | azure
@@ -63,11 +68,14 @@ export const config = {
   },
 
   reminders: {
-    cron: env.REMINDER_CRON || '0 8-18 * * 1-5', // de hora em hora, dias úteis, horário comercial
+    // Dias úteis, entre estas horas (fuso TZ_NAME). Cada tarefa atrasada é lembrada a cada OVERDUE_REMINDER_HOURS.
+    startHour: Number(env.REMINDER_START_HOUR || 8),
+    endHour: Number(env.REMINDER_END_HOUR || 18),
     overdueEveryHours: Number(env.OVERDUE_REMINDER_HOURS || 24),
     dueSoonHours: Number(env.DUE_SOON_HOURS || 24),
   },
-  monthlyReportCron: env.MONTHLY_REPORT_CRON || '0 8 1 * *', // dia 1, 08:00
+  // Relatório mensal: dia 1, a partir desta hora (referente ao mês anterior)
+  monthlyReport: { hour: Number(env.MONTHLY_REPORT_HOUR || 8) },
 
   webrtc: {
     iceServers: [

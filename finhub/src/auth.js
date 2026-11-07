@@ -31,11 +31,11 @@ export function setSession(res, user) {
 
 export const clearSession = (res) => res.clearCookie(COOKIE);
 
-export function userFromToken(token) {
+export async function userFromToken(token) {
   if (!token) return null;
   try {
     const { uid } = jwt.verify(token, config.jwtSecret);
-    const user = q.get('SELECT * FROM users WHERE id = ?', uid);
+    const user = await q.get('SELECT * FROM users WHERE id = ?', uid);
     return user && user.status === 'active' ? user : null;
   } catch {
     return null;
@@ -47,9 +47,9 @@ export function tokenFromCookieHeader(header = '') {
   return match ? decodeURIComponent(match.slice(COOKIE.length + 1)) : null;
 }
 
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '');
-  const user = userFromToken(req.cookies?.[COOKIE] || bearer);
+  const user = await userFromToken(req.cookies?.[COOKIE] || bearer);
   if (!user) return res.status(401).json({ error: 'Sessão expirada. Faça login novamente.' });
   req.user = user;
   next();

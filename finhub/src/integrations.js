@@ -17,31 +17,31 @@ const SCOPES = 'offline_access User.Read Tasks.Read';
 export const microsoftEnabled = () => !!(config.microsoft.clientId && config.microsoft.clientSecret);
 
 // ---------- Utilidades comuns ----------
-export function ensureImportBoard(name) {
-  const b = q.get('SELECT id FROM boards WHERE name=? AND archived=0', name);
+export async function ensureImportBoard(name) {
+  const b = await q.get('SELECT id FROM boards WHERE name=? AND archived=0', name);
   if (b) return b.id;
-  return Number(q.run('INSERT INTO boards (name, description, color, created_at) VALUES (?,?,?,?)',
-    name, 'Tarefas importadas automaticamente', '#0f6cbd', now()).lastInsertRowid);
+  return Number((await q.run('INSERT INTO boards (name, description, color, created_at) VALUES (?,?,?,?)',
+    name, 'Tarefas importadas automaticamente', '#0f6cbd', now())).lastInsertRowid);
 }
 
 /** Cria ou atualiza tarefa importada. Tarefas importadas nunca entram como concluídas (regra da evidência). */
-function upsertImported({ source, externalId, boardId, title, description, dueDate, priority, status, category, assigneeId, userId }) {
-  const existing = externalId ? q.get('SELECT * FROM tasks WHERE source=? AND external_id=?', source, externalId) : null;
+async function upsertImported({ source, externalId, boardId, title, description, dueDate, priority, status, category, assigneeId, userId }) {
+  const existing = externalId ? await q.get('SELECT * FROM tasks WHERE source=? AND external_id=?', source, externalId) : null;
   if (existing) {
     if (existing.status === 'done') return 'skipped';
     const changed = existing.title !== title || (existing.description || '') !== (description || '') ||
       (existing.due_date || null) !== (dueDate || null) || existing.priority !== priority;
     if (!changed) return 'unchanged';
-    q.run('UPDATE tasks SET title=?, description=?, due_date=?, priority=?, updated_at=? WHERE id=?',
+    await q.run('UPDATE tasks SET title=?, description=?, due_date=?, priority=?, updated_at=? WHERE id=?',
       title, description, dueDate, priority, now(), existing.id);
     return 'updated';
   }
-  const pos = q.get('SELECT COALESCE(MAX(position),0)+1 p FROM tasks WHERE board_id=?', boardId).p;
-  const info = q.run(`INSERT INTO tasks (board_id, title, description, status, priority, category, assignee_id, created_by, due_date,
+  const pos = (await q.get('SELECT COALESCE(MAX(position),0)+1 p FROM tasks WHERE board_id=?', boardId)).p;
+  const info = await q.run(`INSERT INTO tasks (board_id, title, description, status, priority, category, assignee_id, created_by, due_date,
       position, source, external_id, started_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     boardId, title, description, status, priority, category, assigneeId, userId, dueDate, pos, source, externalId,
     status === 'doing' ? now() : null, now(), now());
-  q.run('INSERT INTO task_history (task_id, from_status, to_status, user_id, note, created_at) VALUES (?,?,?,?,?,?)',
+  await q.run('INSERT INTO task_history (task_id, from_status, to_status, user_id, note, created_at) VALUES (?,?,?,?,?,?)',
     info.lastInsertRowid, null, status, userId, `Importada (${source})`, now());
   return 'created';
 }
@@ -99,7 +99,7 @@ export async function microsoftCallback(code, state) {
   const tok = await tokenRequest({ code, grant_type: 'authorization_code' });
   const me = await (await fetch(`${GRAPH}/me`, { headers: { Authorization: `Bearer ${tok.access_token}` } })).json();
   const expires = new Date(Date.now() + (tok.expires_in - 60) * 1000).toISOString();
-  q.run(`INSERT INTO integrations (user_id, provider, access_token, refresh_token, expires_at, account_email, settings, created_at)
+  await q.run(`INSERT INTO integrations (user_id, provider, access_token, refresh_token, expires_at, account_email, settings, created_at)
          VALUES (?, 'microsoft_todo', ?, ?, ?, ?, '{"auto_sync":true}', ?)
          ON CONFLICT(user_id, provider) DO UPDATE SET access_token=excluded.access_token, refresh_token=excluded.refresh_token,
            expires_at=excluded.expires_at, account_email=excluded.account_email`,
@@ -111,7 +111,7 @@ async function accessToken(integ) {
   if (integ.expires_at > now()) return integ.access_token;
   const tok = await tokenRequest({ refresh_token: integ.refresh_token, grant_type: 'refresh_token' });
   const expires = new Date(Date.now() + (tok.expires_in - 60) * 1000).toISOString();
-  q.run('UPDATE integrations SET access_token=?, refresh_token=COALESCE(?, refresh_token), expires_at=? WHERE id=?',
+  await q.run('UPDATE integrations SET access_token=?, refresh_token=COALESCE(?, refresh_token), expires_at=? WHERE id=?',
     tok.access_token, tok.refresh_token || null, expires, integ.id);
   return tok.access_token;
 }
@@ -134,28 +134,28 @@ export const getMicrosoftIntegration = (userId) =>
   q.get(`SELECT * FROM integrations WHERE user_id=? AND provider='microsoft_todo'`, userId);
 
 export async function microsoftLists(userId) {
-  const integ = getMicrosoftIntegration(userId);
+  const integ = await getMicrosoftIntegration(userId);
   if (!integ) throw new Error('Microsoft To Do não conectado');
   return (await graphAll(integ, '/me/todo/lists')).map((l) => ({ id: l.id, name: l.displayName, wellknown: l.wellknownListName }));
 }
 
 export async function syncMicrosoft(integ) {
   const settings = JSON.parse(integ.settings || '{}');
-  const boardId = settings.board_id && q.get('SELECT id FROM boards WHERE id=? AND archived=0', settings.board_id)
+  const boardId = settings.board_id && (await q.get('SELECT id FROM boards WHERE id=? AND archived=0', settings.board_id))
     ? settings.board_id
-    : ensureImportBoard('Importadas · Microsoft To Do');
+    : await ensureImportBoard('Importadas · Microsoft To Do');
   const stats = { created: 0, updated: 0, skipped: 0, unchanged: 0 };
   try {
     let lists = await graphAll(integ, '/me/todo/lists');
     if (settings.lists?.length) lists = lists.filter((l) => settings.lists.includes(l.id));
     for (const list of lists) {
       const items = await graphAll(integ, `/me/todo/lists/${encodeURIComponent(list.id)}/tasks?$top=100`);
-      tx(() => {
+      await tx(async () => {
         for (const t of items) {
           if (t.status === 'completed') { stats.skipped++; continue; }
           const due = t.dueDateTime?.dateTime ? toIso(t.dueDateTime.dateTime.slice(0, 10)) : null;
           const desc = [t.body?.content?.trim(), `— Importado do Microsoft To Do (lista "${list.displayName}")`].filter(Boolean).join('\n\n');
-          const result = upsertImported({
+          const result = await upsertImported({
             source: 'microsoft_todo',
             externalId: t.id,
             boardId,
@@ -172,19 +172,19 @@ export async function syncMicrosoft(integ) {
         }
       });
     }
-    q.run('UPDATE integrations SET last_sync_at=?, last_sync_status=? WHERE id=?', now(),
+    await q.run('UPDATE integrations SET last_sync_at=?, last_sync_status=? WHERE id=?', now(),
       `OK: ${stats.created} novas, ${stats.updated} atualizadas`, integ.id);
     if (stats.created || stats.updated) emitAll('boards:changed', {});
     return stats;
   } catch (err) {
-    q.run('UPDATE integrations SET last_sync_at=?, last_sync_status=? WHERE id=?', now(), `Erro: ${err.message}`, integ.id);
+    await q.run('UPDATE integrations SET last_sync_at=?, last_sync_status=? WHERE id=?', now(), `Erro: ${err.message}`, integ.id);
     throw err;
   }
 }
 
 export async function syncAllMicrosoft() {
   if (!microsoftEnabled()) return;
-  for (const integ of q.all(`SELECT * FROM integrations WHERE provider='microsoft_todo'`)) {
+  for (const integ of await q.all(`SELECT * FROM integrations WHERE provider='microsoft_todo'`)) {
     if (JSON.parse(integ.settings || '{}').auto_sync === false) continue;
     try {
       await syncMicrosoft(integ);
@@ -233,17 +233,17 @@ const mapPriority = (s) => {
 const isDone = (s) => /^(done|concluid|complet|feito|finaliz|true|sim|yes)/.test(norm(s)) || /^\d{4}-\d{2}-\d{2}/.test(s);
 const mapStatus = (s) => (/andamento|progress|doing|working/.test(norm(s)) ? 'doing' : /aguard|wait|bloq|stuck/.test(norm(s)) ? 'waiting' : 'todo');
 
-function findUser(value) {
+async function findUser(value) {
   if (!value) return null;
-  return q.get(`SELECT id FROM users WHERE status='active' AND (email=? OR name=? COLLATE NOCASE)`, value, value)?.id || null;
+  return (await q.get(`SELECT id FROM users WHERE status='active' AND (LOWER(email)=LOWER(?) OR LOWER(name)=LOWER(?))`, value, value))?.id || null;
 }
 
-export function importFile({ buffer, filename, boardId, user }) {
+export async function importFile({ buffer, filename, boardId, user }) {
   const text = buffer.toString('utf8').replace(/^﻿/, '');
   const stats = { created: 0, updated: 0, skipped: 0, unchanged: 0, errors: [] };
   const isJson = /\.json$/i.test(filename) || text.trim().startsWith('{');
 
-  tx(() => {
+  await tx(async () => {
     if (isJson) {
       // Exportação JSON do Trello (Menu > Imprimir, exportar e compartilhar > Exportar como JSON)
       const data = JSON.parse(text);
@@ -253,11 +253,11 @@ export function importFile({ buffer, filename, boardId, user }) {
       for (const c of data.cards) {
         const list = lists[c.idList];
         if (c.closed || list?.closed || c.dueComplete || /feito|conclu|done|finaliz/.test(norm(list?.name))) { stats.skipped++; continue; }
-        stats[upsertImported({
+        stats[await upsertImported({
           source: 'trello', externalId: c.id, boardId,
           title: c.name, description: c.desc || '', dueDate: c.due ? toIso(c.due) : null,
           priority: 'media', status: mapStatus(list?.name), category: guessCategory(`${list?.name} ${c.name}`),
-          assigneeId: findUser(members[c.idMembers?.[0]]), userId: user.id,
+          assigneeId: await findUser(members[c.idMembers?.[0]]), userId: user.id,
         })]++;
       }
       return;
@@ -265,20 +265,20 @@ export function importFile({ buffer, filename, boardId, user }) {
     const firstLine = text.split(/\r?\n/)[0] || '';
     const delimiter = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ';' : ',';
     const rows = parse(text, { columns: true, skip_empty_lines: true, delimiter, relax_column_count: true, trim: true });
-    rows.forEach((row, i) => {
+    for (const [i, row] of rows.entries()) {
       const title = pick(row, 'title');
-      if (!title) { stats.errors.push(`Linha ${i + 2}: sem título`); return; }
+      if (!title) { stats.errors.push(`Linha ${i + 2}: sem título`); continue; }
       const status = pick(row, 'status');
-      if (status && isDone(status)) { stats.skipped++; return; }
+      if (status && isDone(status)) { stats.skipped++; continue; }
       const cat = pick(row, 'category');
-      stats[upsertImported({
+      stats[await upsertImported({
         source: 'csv', externalId: null, boardId, title,
         description: pick(row, 'description'), dueDate: parseDateFlexible(pick(row, 'due')),
         priority: mapPriority(pick(row, 'priority')), status: mapStatus(status),
         category: CATEGORIES.find((c) => norm(c) === norm(cat)) || guessCategory(`${cat} ${title}`),
-        assigneeId: findUser(pick(row, 'assignee')), userId: user.id,
+        assigneeId: await findUser(pick(row, 'assignee')), userId: user.id,
       })]++;
-    });
+    }
   });
   emitAll('boards:changed', {});
   return stats;

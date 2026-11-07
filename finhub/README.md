@@ -31,7 +31,7 @@ Plataforma web para uma equipe financeira pequena (pensada para 3 pessoas, aguen
 
 ## Rodando localmente (5 minutos)
 
-Requisito: **Node.js 22.5+** (o banco SQLite é nativo do Node, nada para instalar).
+Requisito: **Node.js 22.5+**. Localmente o banco é SQLite (nativo do Node, nada para instalar); em produção pode ser PostgreSQL, definindo `DATABASE_URL`.
 
 ```bash
 npm install
@@ -57,7 +57,9 @@ O FinHub é um único serviço Node + um volume persistente (banco SQLite) + sto
 
 > 🔒 **Antes de publicar:** defina `ADMIN_EMAIL` com o seu e-mail — só ele poderá criar a conta de administrador no primeiro acesso. **Nunca rode `npm run seed` no site público** (ele cria usuários com senha conhecida).
 
-**Custo zero: Oracle Cloud Always Free** — guia completo do cadastro ao site no ar em [`deploy/ORACLE.md`](deploy/ORACLE.md). A instalação no servidor é um único comando (`deploy/oracle-setup.sh`).
+**Custo zero e sem cartão: Render Free + Supabase** — guia em [`deploy/RENDER-SUPABASE.md`](deploy/RENDER-SUPABASE.md). Banco PostgreSQL e arquivos no Supabase, site no Render, e-mails pelo Brevo.
+
+**Custo zero com cartão (para verificação): Oracle Cloud Always Free** — guia completo do cadastro ao site no ar em [`deploy/ORACLE.md`](deploy/ORACLE.md). A instalação no servidor é um único comando (`deploy/oracle-setup.sh`).
 
 **Caminho mais simples: Render.com (≈ US$ 7–8/mês, HTTPS incluso)**
 1. Crie uma conta no GitHub e envie esta pasta para um repositório **privado** (pelo site: *New repository › uploading an existing file*, arraste o conteúdo da pasta, exceto `node_modules` e `data`).
@@ -120,7 +122,7 @@ A chamada é ponto a ponto (WebRTC) com servidores STUN públicos — funciona n
 src/
   server.js          Express + Socket.IO + rotinas agendadas
   config.js          variáveis de ambiente, status, categorias
-  db.js              esquema SQLite
+  db.js              banco: SQLite (local) ou PostgreSQL (DATABASE_URL), esquema e backup
   auth.js            sessão (JWT em cookie httpOnly), proteção de login
   realtime.js        chat em tempo real e sinalização das videochamadas
   storage.js         local / Azure Blob / S3
@@ -128,7 +130,7 @@ src/
   integrations.js    Microsoft To Do (Graph), CSV e Trello
   kpis.js            cálculo dos indicadores
   reports.js         relatório mensal e lembretes de prazo
-  jobs.js            agendamentos (node-cron) e backup
+  jobs.js            rotinas automáticas (resistem a hospedagens que "dormem") e backup
   routes/            API REST
 public/              frontend (SPA em JavaScript puro, sem etapa de build)
 scripts/teste-api.mjs  teste ponta a ponta das regras de negócio

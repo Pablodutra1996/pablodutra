@@ -13,7 +13,7 @@ callbackRouter.get('/microsoft/callback', async (req, res) => {
   if (req.query.error) return res.redirect(`/#/importacoes?ms=erro&msg=${encodeURIComponent(req.query.error_description || req.query.error)}`);
   try {
     const uid = await microsoftCallback(String(req.query.code), String(req.query.state));
-    const integ = getMicrosoftIntegration(uid);
+    const integ = await getMicrosoftIntegration(uid);
     syncMicrosoft(integ).catch((e) => console.error('[ms-todo] primeira sync:', e.message));
     res.redirect('/#/importacoes?ms=ok');
   } catch (err) {
@@ -23,8 +23,8 @@ callbackRouter.get('/microsoft/callback', async (req, res) => {
 
 const r = Router();
 
-r.get('/', (req, res) => {
-  const ms = getMicrosoftIntegration(req.user.id);
+r.get('/', async (req, res) => {
+  const ms = await getMicrosoftIntegration(req.user.id);
   res.json({
     microsoft: {
       enabled: microsoftEnabled(),
@@ -38,7 +38,7 @@ r.get('/', (req, res) => {
   });
 });
 
-r.get('/microsoft/connect', (req, res) => {
+r.get('/microsoft/connect', async (req, res) => {
   if (!microsoftEnabled()) fail(400, 'Integração Microsoft não configurada (MS_CLIENT_ID / MS_CLIENT_SECRET).');
   res.json({ url: microsoftAuthUrl(req.user.id) });
 });
@@ -51,8 +51,8 @@ r.get('/microsoft/lists', async (req, res) => {
   }
 });
 
-r.patch('/microsoft/settings', (req, res) => {
-  const integ = getMicrosoftIntegration(req.user.id);
+r.patch('/microsoft/settings', async (req, res) => {
+  const integ = await getMicrosoftIntegration(req.user.id);
   if (!integ) fail(404, 'Microsoft To Do não conectado.');
   const current = JSON.parse(integ.settings || '{}');
   const { lists, board_id, auto_sync } = req.body || {};
@@ -62,12 +62,12 @@ r.patch('/microsoft/settings', (req, res) => {
     ...(board_id !== undefined ? { board_id: board_id ? Number(board_id) : null } : {}),
     ...(auto_sync !== undefined ? { auto_sync: !!auto_sync } : {}),
   };
-  q.run('UPDATE integrations SET settings=? WHERE id=?', JSON.stringify(next), integ.id);
+  await q.run('UPDATE integrations SET settings=? WHERE id=?', JSON.stringify(next), integ.id);
   res.json({ settings: next });
 });
 
 r.post('/microsoft/sync', async (req, res) => {
-  const integ = getMicrosoftIntegration(req.user.id);
+  const integ = await getMicrosoftIntegration(req.user.id);
   if (!integ) fail(404, 'Microsoft To Do não conectado.');
   try {
     res.json({ stats: await syncMicrosoft(integ) });
@@ -76,17 +76,17 @@ r.post('/microsoft/sync', async (req, res) => {
   }
 });
 
-r.delete('/microsoft', (req, res) => {
-  q.run(`DELETE FROM integrations WHERE user_id=? AND provider='microsoft_todo'`, req.user.id);
+r.delete('/microsoft', async (req, res) => {
+  await q.run(`DELETE FROM integrations WHERE user_id=? AND provider='microsoft_todo'`, req.user.id);
   res.json({ ok: true });
 });
 
-r.post('/file', upload.single('file'), (req, res) => {
+r.post('/file', upload.single('file'), async (req, res) => {
   if (!req.file) fail(400, 'Envie um arquivo CSV ou JSON.');
   const boardId = Number(req.body?.board_id);
-  if (!q.get('SELECT id FROM boards WHERE id=? AND archived=0', boardId)) fail(400, 'Selecione o quadro de destino.');
+  if (!await q.get('SELECT id FROM boards WHERE id=? AND archived=0', boardId)) fail(400, 'Selecione o quadro de destino.');
   try {
-    res.json({ stats: importFile({ buffer: req.file.buffer, filename: req.file.originalname, boardId, user: req.user }) });
+    res.json({ stats: await importFile({ buffer: req.file.buffer, filename: req.file.originalname, boardId, user: req.user }) });
   } catch (err) {
     fail(400, `Não foi possível importar: ${err.message}`);
   }

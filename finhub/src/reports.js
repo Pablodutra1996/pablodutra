@@ -46,13 +46,13 @@ function overdueList(tasks) {
 
 /** Gera e envia o resumo mensal: cada pessoa recebe seus indicadores; administradores recebem também o consolidado da equipe */
 export async function sendMonthlyReports(month, { onlyUserId } = {}) {
-  const team = computeKpis(month, null);
-  q.run('INSERT INTO kpi_reports (period, user_id, data, sent_at, created_at) VALUES (?,?,?,?,?)', month, null, JSON.stringify(team), now(), now());
-  const users = q.all(`SELECT * FROM users WHERE status='active'${onlyUserId ? ' AND id=?' : ''}`, ...(onlyUserId ? [onlyUserId] : []));
+  const team = await computeKpis(month, null);
+  await q.run('INSERT INTO kpi_reports (period, user_id, data, sent_at, created_at) VALUES (?,?,?,?,?)', month, null, JSON.stringify(team), now(), now());
+  const users = await q.all(`SELECT * FROM users WHERE status='active'${onlyUserId ? ' AND id=?' : ''}`, ...(onlyUserId ? [onlyUserId] : []));
   let sent = 0;
   for (const u of users) {
-    const mine = computeKpis(month, u.id);
-    q.run('INSERT INTO kpi_reports (period, user_id, data, sent_at, created_at) VALUES (?,?,?,?,?)', month, u.id, JSON.stringify(mine), now(), now());
+    const mine = await computeKpis(month, u.id);
+    await q.run('INSERT INTO kpi_reports (period, user_id, data, sent_at, created_at) VALUES (?,?,?,?,?)', month, u.id, JSON.stringify(mine), now(), now());
     const s = mine.summary;
     const highlight = s.completion_rate === null ? 'Não houve tarefas com prazo no período.'
       : s.completion_rate >= 90 ? '🎉 Ótimo resultado! Continue assim.'
@@ -86,9 +86,9 @@ export async function sendTaskReminders() {
   const soonLimit = new Date(Date.now() + config.reminders.dueSoonHours * 3600000).toISOString();
   const repeatBefore = new Date(Date.now() - (config.reminders.overdueEveryHours - 0.5) * 3600000).toISOString();
 
-  const overdue = q.all(`SELECT * FROM tasks WHERE status!='done' AND assignee_id IS NOT NULL AND due_date < ?
+  const overdue = await q.all(`SELECT * FROM tasks WHERE status!='done' AND assignee_id IS NOT NULL AND due_date < ?
     AND (last_overdue_notice_at IS NULL OR last_overdue_notice_at < ?)`, nowIso, repeatBefore);
-  const soon = q.all(`SELECT * FROM tasks WHERE status!='done' AND assignee_id IS NOT NULL AND due_date >= ? AND due_date <= ?
+  const soon = await q.all(`SELECT * FROM tasks WHERE status!='done' AND assignee_id IS NOT NULL AND due_date >= ? AND due_date <= ?
     AND due_soon_notice_at IS NULL`, nowIso, soonLimit);
 
   const byUser = new Map();
@@ -100,7 +100,7 @@ export async function sendTaskReminders() {
   soon.forEach((t) => add(t, 'soon'));
 
   for (const [uid, { overdue: od, soon: sn }] of byUser) {
-    const u = q.get('SELECT * FROM users WHERE id=?', uid);
+    const u = await q.get('SELECT * FROM users WHERE id=?', uid);
     if (!u || u.status !== 'active') continue;
     const li = (t, extra) => `<li style="margin:6px 0"><a href="${config.appUrl}/#/tarefa/${t.id}" style="color:#4f46e5;font-weight:600">${escapeHtml(t.title)}</a> — ${extra}</li>`;
     const daysLate = (t) => Math.max(1, Math.ceil((Date.now() - new Date(t.due_date)) / 86400000));
@@ -119,8 +119,8 @@ export async function sendTaskReminders() {
         cta: { label: 'Ver minhas tarefas', url: `${config.appUrl}/#/minhas-tarefas` } }),
     });
     if (ok) {
-      for (const t of od) q.run('UPDATE tasks SET last_overdue_notice_at=? WHERE id=?', nowIso, t.id);
-      for (const t of sn) q.run('UPDATE tasks SET due_soon_notice_at=? WHERE id=?', nowIso, t.id);
+      for (const t of od) await q.run('UPDATE tasks SET last_overdue_notice_at=? WHERE id=?', nowIso, t.id);
+      for (const t of sn) await q.run('UPDATE tasks SET due_soon_notice_at=? WHERE id=?', nowIso, t.id);
     }
   }
   return { users: byUser.size, overdue: overdue.length, soon: soon.length };
