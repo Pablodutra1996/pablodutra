@@ -1,0 +1,20 @@
+# Sobe o FinHub com HTTPS automático (Caddy + Let's Encrypt).
+# 1) Aponte o DNS do seu domínio para o servidor  2) cp .env.example .env e preencha  3) DOMAIN=finhub.suaempresa.com.br docker compose up -d
+services:
+  finhub:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - finhub-data:/app/data
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    command: caddy reverse-proxy --from ${DOMAIN:-localhost} --to finhub:3000
+    volumes:
+      - caddy-data:/data
+    depends_on: [finhub]
+volumes:
+  finhub-data:
+  caddy-data:

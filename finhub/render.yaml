@@ -1,0 +1,50 @@
+# Blueprint do Render (https://render.com) — plano GRATUITO + Supabase (banco e arquivos)
+# Render: New > Blueprint > repositório > Branch "finhub" > Blueprint Path "finhub/render.yaml"
+# Passo a passo completo: finhub/deploy/RENDER-SUPABASE.md
+services:
+  - type: web
+    name: finhub
+    runtime: docker
+    plan: free
+    region: virginia            # mesma região do Supabase (East US / N. Virginia) = mais rápido
+    branch: finhub
+    dockerContext: ./finhub
+    dockerfilePath: ./finhub/Dockerfile
+    buildFilter:
+      paths:
+        - finhub/**
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL          # seu e-mail: só ele pode criar a conta de administrador
+        sync: false
+      - key: TZ_NAME
+        value: America/Sao_Paulo
+      # ---- Banco de dados (Supabase > Connect > Session pooler) ----
+      - key: DATABASE_URL
+        sync: false
+      # ---- Arquivos e backups (Supabase > Storage > S3 Connection) ----
+      - key: STORAGE_DRIVER
+        value: s3
+      - key: S3_BUCKET
+        value: finhub
+      - key: S3_REGION
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_FORCE_PATH_STYLE
+        value: "true"
+      - key: BACKUP_ENABLED
+        value: "true"
+      # ---- E-mail (opcional; Brevo grátis: 300 e-mails/dia) ----
+      - key: BREVO_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
