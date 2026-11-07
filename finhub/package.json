@@ -1,0 +1,33 @@
+{
+  "name": "finhub",
+  "version": "1.0.0",
+  "description": "FinHub - Plataforma de gestão de tarefas, chat e indicadores para a área financeira",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
+    "seed": "node --disable-warning=ExperimentalWarning src/seed.js",
+    "test:api": "node scripts/teste-api.mjs"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1164.0",
+    "@azure/storage-blob": "^12.34.0",
+    "bcryptjs": "^3.0.3",
+    "chart.js": "^4.4.1",
+    "cookie-parser": "^1.4.7",
+    "csv-parse": "^7.0.3",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.5.0",
+    "node-cron": "^4.6.0",
+    "nodemailer": "^10.3.1",
+    "socket.io": "^4.8.4"
+  }
+}

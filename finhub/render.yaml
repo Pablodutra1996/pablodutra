@@ -1,0 +1,39 @@
+# Blueprint do Render (https://render.com): New > Blueprint > selecione o repositório
+# e informe o caminho do Blueprint: finhub/render.yaml
+# Cria o serviço web com HTTPS e um disco persistente para o banco de dados.
+services:
+  - type: web
+    name: finhub
+    runtime: docker
+    rootDir: finhub
+    dockerContext: ./finhub
+    dockerfilePath: ./finhub/Dockerfile
+    branch: finhub
+    plan: starter          # o plano gratuito não tem disco persistente (os dados seriam apagados)
+    region: virginia
+    healthCheckPath: /api/health
+    disk:
+      name: finhub-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL     # seu e-mail: só ele pode criar a conta de administrador
+        sync: false
+      - key: TZ_NAME
+        value: America/Sao_Paulo
+      - key: STORAGE_DRIVER
+        value: local
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
