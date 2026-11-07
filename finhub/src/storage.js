@@ -44,6 +44,9 @@ async function s3Driver() {
     endpoint: c.endpoint,
     forcePathStyle: c.forcePathStyle,
     credentials: c.accessKeyId ? { accessKeyId: c.accessKeyId, secretAccessKey: c.secretAccessKey } : undefined,
+    // Compatibilidade com serviços "S3-compatíveis" (Oracle Object Storage, R2, MinIO...)
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
   });
   return {
     name: 's3',

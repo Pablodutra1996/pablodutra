@@ -57,6 +57,8 @@ O FinHub é um único serviço Node + um volume persistente (banco SQLite) + sto
 
 > 🔒 **Antes de publicar:** defina `ADMIN_EMAIL` com o seu e-mail — só ele poderá criar a conta de administrador no primeiro acesso. **Nunca rode `npm run seed` no site público** (ele cria usuários com senha conhecida).
 
+**Custo zero: Oracle Cloud Always Free** — guia completo do cadastro ao site no ar em [`deploy/ORACLE.md`](deploy/ORACLE.md). A instalação no servidor é um único comando (`deploy/oracle-setup.sh`).
+
 **Caminho mais simples: Render.com (≈ US$ 7–8/mês, HTTPS incluso)**
 1. Crie uma conta no GitHub e envie esta pasta para um repositório **privado** (pelo site: *New repository › uploading an existing file*, arraste o conteúdo da pasta, exceto `node_modules` e `data`).
 2. Crie uma conta em https://render.com e conecte o GitHub.
